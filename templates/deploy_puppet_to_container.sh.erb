@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# deploy_puppet_container.sh
+# --------------------------
+#
+# Deploy puppet on remote container.
+# - Install it (v3.0)
+# - Autostart at boot
+# - Set it up (Key Exchange with puppetmaster)
+# - Launch puppet on remote container
+#
+# Cédric VILLA contact@cedricvilla.com
+#
+# THIS FILE IS MANAGED BY PUPPET
+# <%= file %>
+#
+
+# GLOBAL VARIABLES
+CONTAINERS_PATH="/var/lib/lxc"
+INSTALL_PUPPET_SCRIPT="install_puppet_client.sh"
+PUPPET_DEFAULT_CONF="puppet"
+PUPPET_CONF="puppet.conf"
+CONTAINER=$1
+
+# CHECK INPUTS
+if [ ! $1 ]; then
+  echo "Syntax : deploy_puppet_client_to_container.sh <name(8 char max)>" 2>&1
+  echo `ls $CONTAINERS_PATH`
+  exit 
+fi
+
+# EXIT WITH ERROR IF CONTAINER IS DOWN
+ping $CONTAINER -i 5 -w 5
+if [ 'x$?' == 'x1' ]; then
+	echo "Connection Unnavailable on $CONTAINER... exit!"
+	exit 1
+else
+	echo "Connection Available on $CONTAINER" 
+fi
+
+# CHECK IF PUPPETMASTER IS UP - DERTERMINE WHERE IT IS
+if echo `ping -c1 puppet` | grep 192.168.2.5
+then
+  echo "puppet is local"
+  SSH_PUPPET_COMMAND="ssh puppet"
+else
+  echo "puppet is not local"
+  SSH_PUPPET_COMMAND="ssh puppet ssh puppet"
+fi
+
+# COPY PUPPET INSTALLATION SCRIPT TO CONTAINER
+scp templates/$INSTALL_PUPPET_SCRIPT $CONTAINER:/opt
+
+# GET CONTAINER FQDN + LOWER CASE FQDN (CERTS SIGNING)
+CONTAINER_FQDN=`ssh $CONTAINER hostname -f`
+CONTAINER_FQDN_LOWERCASE=`echo $CONTAINER_FQDN | tr '[:upper:]' '[:lower:]'`
+echo "container fqdn:$CONTAINER_FQDN_LOWERCASE"
+
+# CLEAN PUPPET MASTER FROM EXISTING CERTIFICATE FOR THIS CONTAINER
+$SSH_PUPPET_COMMAND puppet cert clean ${CONTAINER_FQDN_LOWERCASE}.local
+
+# LAUNCH PUPPET INSTALLATION SCRIPT ON REMOTE CONTAINER
+ssh $CONTAINER /opt/$INSTALL_PUPPET_SCRIPT
+
+# PUPPETMASTER CERTIFICATE SIGNING
+echo "puppet ca sign ${CONTAINER_FQDN}.local"
+$SSH_PUPPET_COMMAND puppet ca sign ${CONTAINER_FQDN_LOWERCASE}.local
+sleep 5
+
+# START FIRST PUPPET DEPLOYMENT IN CONTAINER 
+ssh $CONTAINER puppet agent -t 
+
+# COPY AUTO LAUNCH CONFIGURATION FILE /etc/default/puppet AND RESTART PUPPET
+scp templates/$PUPPET_DEFAULT_CONF $CONTAINER:/etc/default
+scp templates/$PUPPET_CONF $CONTAINER:/etc/puppet/
+ssh $CONTAINER /etc/init.d/puppet restart
+
+# NORMAL EXIT
+exit 0

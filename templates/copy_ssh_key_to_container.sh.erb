@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# THIS FILE IS MANAGED BY PUPPET
+# <%= file %>
+#
+
+SCRIPT_DIR=<%= install_directory %>
+CONTAINERS_BASE_PATH="/var/lib/lxc"
+CONTAINER_NAME=$1
+
+CONTAINER_PATH=${CONTAINERS_BASE_PATH}/${CONTAINER_NAME}
+TEMPLATES=${SCRIPT_DIR}/templates
+
+# CHECK INPUTS
+if [ ! $1 ]; then
+  echo "Syntax : copy_ssh_key_to_container.sh <container_name>" 2>&1
+  echo `lxc-ls`
+  exit
+fi
+
+if [ ! -d $CONTAINER_PATH ]; then
+  echo "!!! This container doesn't exists ($CONTAINER_NAME), please chose a new one"
+  echo `lxc-ls`
+  exit
+fi
+
+# COPY SSH KEY TO CONTAINER
+if [ ! -f ~/.ssh/id_rsa ]; then
+  ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+fi
+mkdir -p ${CONTAINER_PATH}/root/root/.ssh/
+cat ~/.ssh/id_rsa.pub >> ${CONTAINER_PATH}/root/root/.ssh/authorized_keys

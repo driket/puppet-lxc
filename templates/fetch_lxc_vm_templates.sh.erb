@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# fetch_lxc_vm_templates.sh 
+# -------------------------
+#
+
+PROVISIONING_SERVER=<%= @provisioning_server %>
+REMOTE_TMPL_PATH=/var/lib/lxc
+LOCAL_LXC_PATH=/var/lib/lxc
+HOSTNAME=`hostname`
+
+if [ ${HOSTNAME} == ${PROVISIONING_SERVER} ]; then
+  echo "You can't fetch templates, you already are on provisioning server"
+  exit 1
+fi
+
+TEMPLATES=`ssh $PROVISIONING_SERVER ls -d $REMOTE_TMPL_PATH/tmpl*`
+
+for TEMPLATE in $TEMPLATES
+do
+  echo $TEMPLATE
+  rsync -av --numeric-ids --delete $PROVISIONING_SERVER:$TEMPLATE $LOCAL_LXC_PATH
+done
+

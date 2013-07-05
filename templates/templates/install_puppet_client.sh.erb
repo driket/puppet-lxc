@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# install_puppet_client.sh
+# ------------------------
+#
+# Install puppet client.
+# - Add apt/sources.list package for Puppet 3.x
+# - Install it
+# - Create a certificate request
+#
+# Cédric VILLA contact@cedricvilla.com
+#
+# THIS FILE IS MANAGED BY PUPPET
+# <%= file %>
+#
+
+
+# APPEND PUPPET 3.0 SOURCE LIST
+apt-get install wget
+cd /tmp
+wget http://apt.puppetlabs.com/puppetlabs-release-lucid.deb
+dpkg -i puppetlabs-release-lucid.deb
+
+#if ! grep -Fxq "deb http://apt.puppetlabs.com squeeze main" /etc/apt/sources.list 
+#then
+#    echo "deb http://apt.puppetlabs.com squeeze main" >> /etc/apt/sources.list
+#fi
+#if ! grep -Fxq "deb-src http://apt.puppetlabs.com squeeze main" /etc/apt/sources.list
+#then
+#    echo "deb-src http://apt.puppetlabs.com squeeze main" >> /etc/apt/sources.list
+#fi
+
+# INTALL PUPPET
+apt-get -y --force-yes update
+apt-get -y --force-yes install puppet 
+
+# CLEAN PUPPET FROM OLD CERTIFICATES
+rm -rf /var/lib/puppet/ssl
+
+# CREATE PUPPET CERTIFICATE REQUEST
+puppet agent -t
+sleep 5
+
