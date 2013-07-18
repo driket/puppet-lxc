@@ -118,8 +118,13 @@ function get_local_domain
 function deploy_puppet_to_container
 {
 	echo "--------> gen puppet cert on $1"
-	rm -rf $LOCAL_LXC_PATH/$1/rootfs/var/lib/puppet/ssl
 	ssh -t ubuntu@$1 'sudo puppet agent -t'
+}
+
+function cleanup_puppet_ssl
+{
+	echo "--------> cleanup puppet ssl on $1"
+	rm -rf $LOCAL_LXC_PATH/$1/rootfs/var/lib/puppet/ssl
 }
 
 function puppet_ca_sign_container
@@ -181,7 +186,7 @@ elif [ "$1" = "clone" ]; then
 		patch_vm_for_local_use
 		start_vm $3
 	  wait_for_host $3
-		deploy_puppet_to_container $3
+		#deploy_puppet_to_container $3
 		puppet_ca_sign_container $3
 		exit 0
 	fi
