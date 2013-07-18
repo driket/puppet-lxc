@@ -1,0 +1,214 @@
+#!/bin/bash
+#
+# template-tool.sh 
+# -------------------------
+#
+
+PROVISIONING_SERVER=<%= @provisioning_server_fqdn %>
+REMOTE_TMPL_PATH=/var/lib/lxc
+LOCAL_LXC_PATH=/var/lib/lxc
+HOSTNAME=`hostname`
+PROVISIONING_PUPPET_HOST="<%= @provisioning_server_ip %> puppet"
+PING="/bin/ping"
+LOCAL_DOMAIN=''
+
+. /lib/lsb/init-functions
+
+function list_local_templates
+{
+	echo "--------> List local templates"
+	ls -d ${LOCAL_LXC_PATH}/tmpl*|awk -F"/" '{print $NF}'
+}
+function show_syntax
+{
+	list_local_templates
+  log_warning_msg "Syntax : $0 clone <tmpl-xxxx> <name>"
+  log_warning_msg "Syntax : $0 sync (download templates from provisioning server)"
+  log_warning_msg "Syntax : $0 deploypuppet <name>"
+  exit 1
+}
+
+function fetch_vm_from_provisioning_server 
+{
+  echo "--------> fetch templates from provisioning server"
+	if [ ${HOSTNAME} == ${PROVISIONING_SERVER} ]; then
+	  log_warning_msg "No need to fetch templates, you already are on provisioning server"
+	else
+		TEMPLATES=`ssh $PROVISIONING_SERVER ls -d $REMOTE_TMPL_PATH/tmpl*`
+
+		for TEMPLATE in $TEMPLATES
+		do
+		  rsync -av --numeric-ids --delete $PROVISIONING_SERVER:$TEMPLATE $LOCAL_LXC_PATH &>/dev/null
+			rm -rf ${TEMPLATE}/rootfs/var/lib/puppet/ssl &>/dev/null
+		done
+	fi
+}
+
+function patch_vm_for_local_use 
+{
+  echo "--------> patch_vm_for_local_use"
+	CONTAINERS=`ls $LOCAL_LXC_PATH`
+	for CONTAINER in $CONTAINERS
+	do
+	  HOST_FILE=${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/hosts
+	  if ! grep -q "$PROVISIONING_PUPPET_HOST" $HOST_FILE; then
+			if [[ $CONTAINER != tmpl-* ]]; then
+		    echo "[$CONTAINER] add '${PROVISIONING_PUPPET_HOST}' to ${HOST_FILE}"
+			fi
+			echo ${PROVISIONING_PUPPET_HOST} >> ${HOST_FILE}
+	  fi
+		HOST_REVOLV_CONF_FILE='/etc/resolv.conf'
+		/bin/rm ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/run/resolvconf/resolv.conf &>/dev/null
+		/bin/cp $HOST_REVOLV_CONF_FILE ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/run/resolvconf &>/dev/null
+		/bin/cp $HOST_REVOLV_CONF_FILE ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/resolvconf/resolv.conf.d &>/dev/null
+		/bin/rm ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/resolvconf/resolv.conf.d/original &>/dev/null
+		/bin/rm ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/resolvconf/resolv.conf.d/base &>/dev/null
+		/bin/mv ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/resolvconf/resolv.conf.d/resolv.conf ${LOCAL_LXC_PATH}/${CONTAINER}/rootfs/etc/resolvconf/resolv.conf.d/base &>/dev/null
+	done
+}
+
+function clone_template 
+{
+  echo "--------> cloning $1 to $2"
+	lxc-clone -o $1 -n $2
+}
+
+function start_vm 
+{
+  echo "--------> starting $1"
+	lxc-start -d -n $1 
+}
+
+function wait_for_host
+{
+	echo "--------> waiting for $1"
+  if [ -n "$1" ]; 
+  then
+      ping_host $1 &>/dev/null
+  else
+      echo "wait_for_host: Hostname argument expected"
+  fi
+}
+
+function ping_host
+{
+  reachable=0;
+  while [ $reachable -eq 0 ];
+  do
+  	$PING -q -c 1 $1
+  	if [ "$?" -eq 0 ]; then
+     	reachable=1
+		fi
+  done
+  sleep 2
+}
+
+function get_local_domain
+{
+	while read line  
+	do
+	   #echo -e "$line\n"  
+	   if [[ $line == search* ]]; then
+	     LOCAL_DOMAIN=`echo $line | sed 's/search//' | tr -d ' '`
+	   fi
+
+	done < /etc/resolv.conf
+}
+
+function deploy_puppet_to_container
+{
+	echo "--------> gen puppet cert on $1"
+	rm -rf $LOCAL_LXC_PATH/$1/rootfs/var/lib/puppet/ssl
+	ssh -t ubuntu@$1 'sudo puppet agent -t'
+}
+
+function puppet_ca_sign_container
+{
+	echo "--------> puppetmaster sign cert for $1.${LOCAL_DOMAIN}"
+	ssh -t ${PROVISIONING_SERVER} ssh -t ubuntu@puppet "sudo puppet ca sign $1.${LOCAL_DOMAIN}"
+}
+
+function puppet_ca_destroy_container
+{
+	echo "--------> puppetmaster cleanup cert for $1.${LOCAL_DOMAIN}"
+	ssh -t ${PROVISIONING_SERVER} ssh -t ubuntu@puppet "sudo puppet ca destroy $1.${LOCAL_DOMAIN}"
+}
+
+# if no inputs at all
+if [ ! $1 ]; then
+	show_syntax
+	exit 1
+fi
+
+# get local domain for VMs (cv/mv/etc.)
+get_local_domain
+
+# if sync command
+if [ "$1" = "sync" ]; then
+	
+	if [ $2 ]; then
+		# no other arguments are accepted for sync
+		show_syntax
+		exit 1
+	elif [ $3 ]; then
+		# no other arguments are accepted for sync
+		show_syntax
+		exit 1
+	else
+		fetch_vm_from_provisioning_server
+		patch_vm_for_local_use
+		show_syntax
+		exit 0
+	fi
+
+# if clone command
+elif [ "$1" = "clone" ]; then
+	
+	if [ ! $3 ]; then
+		# 3 arguments are needed (clone + tmpl-name + vm)
+		show_syntax
+		exit 1
+	elif [ ! -d "${LOCAL_LXC_PATH}/$2" ]; then
+		log_failure_msg "template ${LOCAL_LXC_PATH}/$2 doesn't exist"
+		exit 1
+ 	elif [ -d "${LOCAL_LXC_PATH}/$3" ]; then
+		log_failure_msg "host ${LOCAL_LXC_PATH}/$3 already exists"
+		exit 1
+	else
+		fetch_vm_from_provisioning_server
+		patch_vm_for_local_use
+		clone_template $2 $3
+		patch_vm_for_local_use
+		start_vm $3
+	  wait_for_host $3
+		deploy_puppet_to_container $3
+		puppet_ca_sign_container $3
+		exit 0
+	fi
+	
+# if clone command
+elif [ "$1" = "deploypuppet" ]; then
+	
+	if [ ! $2 ]; then
+		# 2 arguments are needed (clone + tmpl-name + vm)
+		show_syntax
+		exit 1
+ 	elif [ ! -d "${LOCAL_LXC_PATH}/$2" ]; then
+		log_failure_msg "host ${LOCAL_LXC_PATH}/$2 doesn't exist"
+		exit 1
+	else
+		puppet_ca_destroy_container $2
+		deploy_puppet_to_container $2
+		puppet_ca_sign_container $2		
+		exit 0
+	fi
+		
+else
+	show_syntax
+	exit 1
+fi
+
+
+
+
+
