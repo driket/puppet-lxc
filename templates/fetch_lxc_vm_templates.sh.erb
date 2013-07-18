@@ -4,7 +4,7 @@
 # -------------------------
 #
 
-PROVISIONING_SERVER=<%= @provisioning_server %>
+PROVISIONING_SERVER=<%= @provisioning_server_fqdn %>
 REMOTE_TMPL_PATH=/var/lib/lxc
 LOCAL_LXC_PATH=/var/lib/lxc
 HOSTNAME=`hostname`
@@ -18,7 +18,9 @@ TEMPLATES=`ssh $PROVISIONING_SERVER ls -d $REMOTE_TMPL_PATH/tmpl*`
 
 for TEMPLATE in $TEMPLATES
 do
-  echo $TEMPLATE
+  echo "-------> copy ${TEMPLATE}"
   rsync -av --numeric-ids --delete $PROVISIONING_SERVER:$TEMPLATE $LOCAL_LXC_PATH
+	echo "remove puppet old certs"
+	rm -rf ${TEMPLATE}/rootfs/var/lib/puppet/ssl
+	echo ""
 done
-

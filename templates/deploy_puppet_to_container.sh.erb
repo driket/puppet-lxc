@@ -72,7 +72,7 @@ ssh $CONTAINER puppet agent -t
 
 # COPY AUTO LAUNCH CONFIGURATION FILE /etc/default/puppet AND RESTART PUPPET
 scp templates/$PUPPET_DEFAULT_CONF $CONTAINER:/etc/default
-scp templates/$PUPPET_CONF $CONTAINER:/etc/puppet/
+#scp templates/$PUPPET_CONF $CONTAINER:/etc/puppet/
 ssh $CONTAINER /etc/init.d/puppet restart
 
 # NORMAL EXIT
