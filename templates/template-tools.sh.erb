@@ -186,7 +186,7 @@ elif [ "$1" = "clone" ]; then
 		patch_vm_for_local_use
 		start_vm $3
 	  wait_for_host $3
-		#deploy_puppet_to_container $3
+		deploy_puppet_to_container $3
 		puppet_ca_sign_container $3
 		exit 0
 	fi
@@ -202,6 +202,7 @@ elif [ "$1" = "deploypuppet" ]; then
 		log_failure_msg "host ${LOCAL_LXC_PATH}/$2 doesn't exist"
 		exit 1
 	else
+		cleanup_puppet_ssl $2
 		puppet_ca_destroy_container $2
 		deploy_puppet_to_container $2
 		puppet_ca_sign_container $2		
