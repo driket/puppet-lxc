@@ -1,8 +1,16 @@
 class mv_lxc::packages {
 
-	package {"mv_lxc":
-		name => $mv_lxc::package,
-		ensure => present,
-	}
+  package {'lxc':
+    ensure => present,
+  }
+  package {'bridge-utils':
+    ensure => present,
+  }
+  package {'debootstrap':
+    ensure => present,
+  }
+  package {'rsync':
+    ensure => present,
+  }
 
 }
